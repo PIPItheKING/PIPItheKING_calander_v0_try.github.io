@@ -1,0 +1,212 @@
+"use client"
+
+import * as React from "react"
+import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react"
+import { addMonths, format, getDaysInMonth, isSameDay, isSameMonth, isToday, subMonths, isPast, startOfDay } from "date-fns"
+
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { toast } from "@/components/ui/use-toast"
+
+interface Appointment {
+  date: Date
+  time: string
+}
+
+const initialTimeSlots = ["8:00", "10:00", "12:00", "14:00", "16:00"]
+
+export default function Component() {
+  const [currentMonth, setCurrentMonth] = React.useState(new Date())
+  const [selectedDate, setSelectedDate] = React.useState<Date | null>(null)
+  const [selectedTime, setSelectedTime] = React.useState<string | null>(null)
+  const [appointments, setAppointments] = React.useState<Appointment[]>([])
+  const [availableTimes, setAvailableTimes] = React.useState<{ [key: string]: string[] }>({})
+  const [lastSelectedDate, setLastSelectedDate] = React.useState<Date | null>(null)
+
+  const daysInMonth = getDaysInMonth(currentMonth)
+  const firstDayOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)
+  const startingDayIndex = firstDayOfMonth.getDay()
+
+  const handlePreviousMonth = () => setCurrentMonth(subMonths(currentMonth, 1))
+  const handleNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1))
+
+  const handleDateClick = (day: number) => {
+    const clickedDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
+    if (!isPast(startOfDay(clickedDate))) {
+      if (selectedDate && isSameDay(clickedDate, selectedDate)) {
+        // If clicking the same date, reset selection
+        setSelectedDate(null)
+        setSelectedTime(null)
+      } else {
+        setSelectedDate(clickedDate)
+        setLastSelectedDate(clickedDate)
+        setSelectedTime(null)
+        // Initialize available times for the date if not already set
+        const dateKey = format(clickedDate, "yyyy-MM-dd")
+        if (!availableTimes[dateKey]) {
+          setAvailableTimes(prev => ({
+            ...prev,
+            [dateKey]: [...initialTimeSlots]
+          }))
+        }
+      }
+    }
+  }
+
+  const handleTimeSelect = (time: string) => {
+    setSelectedTime(time)
+  }
+
+  const handleConfirm = () => {
+    if (selectedDate && selectedTime) {
+      const dateKey = format(selectedDate, "yyyy-MM-dd")
+      const newAppointment = { date: selectedDate, time: selectedTime }
+      setAppointments([...appointments, newAppointment])
+      setAvailableTimes(prev => ({
+        ...prev,
+        [dateKey]: prev[dateKey].filter(time => time !== selectedTime)
+      }))
+      scheduleToGoogleCalendar(newAppointment)
+      setSelectedDate(null)
+      setSelectedTime(null)
+    }
+  }
+
+  const scheduleToGoogleCalendar = (appointment: Appointment) => {
+    // This is a simulated function. In a real application, this would involve server-side code and OAuth2 authentication.
+    const eventDetails = {
+      summary: "Appointment",
+      location: "TBD",
+      description: "Appointment scheduled via our calendar app",
+      start: {
+        dateTime: `${format(appointment.date, "yyyy-MM-dd")}T${appointment.time}:00`,
+        timeZone: "Your_Timezone"
+      },
+      end: {
+        dateTime: `${format(appointment.date, "yyyy-MM-dd")}T${appointment.time.split(':')[0]}:59:59`,
+        timeZone: "Your_Timezone"
+      },
+      attendees: [{ email: "alonbenzion2005@gmail.com" }]
+    }
+    
+    console.log("Scheduling to Google Calendar:", eventDetails)
+    toast({
+      title: "Appointment Scheduled",
+      description: `Your appointment on ${format(appointment.date, "MMMM d, yyyy")} at ${appointment.time} has been scheduled to your Google Calendar.`,
+    })
+  }
+
+  return (
+    <div className="w-full max-w-md mx-auto p-4 bg-white rounded-lg shadow">
+      <div className="flex items-center justify-between mb-4">
+        <Button variant="outline" size="icon" onClick={handlePreviousMonth} aria-label="Previous month">
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <h2 className="text-lg font-semibold">{format(currentMonth, "MMMM yyyy")}</h2>
+        <Button variant="outline" size="icon" onClick={handleNextMonth} aria-label="Next month">
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="grid grid-cols-7 gap-2 mb-2">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+          <div key={day} className="text-center text-sm font-medium text-gray-500">
+            {day}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-2">
+        {Array.from({ length: startingDayIndex }).map((_, index) => (
+          <div key={`empty-${index}`} />
+        ))}
+        {Array.from({ length: daysInMonth }).map((_, index) => {
+          const day = index + 1
+          const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
+          const isSelected = selectedDate && isSameDay(date, selectedDate)
+          const isCurrentMonth = isSameMonth(date, currentMonth)
+          const isCurrent = isToday(date)
+          const isPastDate = isPast(startOfDay(date))
+          const isLastSelected = lastSelectedDate && isSameDay(date, lastSelectedDate)
+
+          return (
+            <Button
+              key={day}
+              variant="outline"
+              size="sm"
+              className={cn(
+                "h-10 w-10 p-0 font-normal aria-selected:opacity-100",
+                isCurrentMonth ? "text-gray-900" : "text-gray-400",
+                isCurrent && "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+                isPastDate && "bg-gray-200 text-gray-400 cursor-not-allowed",
+                isSelected && selectedTime && "bg-blue-500 text-white hover:bg-blue-600 hover:text-white focus:bg-blue-600 focus:text-white",
+                isSelected && !selectedTime && "ring-2 ring-offset-2 ring-blue-500",
+                isLastSelected && "bg-green-500 text-white hover:bg-green-600 hover:text-white focus:bg-green-600 focus:text-white"
+              )}
+              onClick={() => !isPastDate && handleDateClick(day)}
+              disabled={isPastDate}
+              aria-selected={isSelected}
+              aria-label={format(date, "MMMM do, yyyy")}
+            >
+              {day}
+            </Button>
+          )
+        })}
+      </div>
+      {selectedDate && !isPast(startOfDay(selectedDate)) && (
+        <div className="mt-4">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-full justify-between">
+                {selectedTime || "Select time"}
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-full p-0">
+              <div className="grid gap-2 p-2">
+                {availableTimes[format(selectedDate, "yyyy-MM-dd")]?.map((time) => (
+                  <Button
+                    key={time}
+                    variant="ghost"
+                    className={cn(
+                      "justify-start font-normal",
+                      selectedTime === time && "bg-blue-500 text-white hover:bg-blue-600 hover:text-white"
+                    )}
+                    onClick={() => handleTimeSelect(time)}
+                  >
+                    {time}
+                  </Button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      )}
+      {selectedDate && selectedTime && (
+        <Button className="w-full mt-4" onClick={handleConfirm}>
+          Confirm Appointment
+        </Button>
+      )}
+      {appointments.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-lg font-semibold mb-2">Confirmed Appointments</h3>
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                <th className="border p-2 text-left">Date</th>
+                <th className="border p-2 text-left">Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {appointments.map((appointment, index) => (
+                <tr key={index}>
+                  <td className="border p-2">{format(appointment.date, "MMMM d, yyyy")}</td>
+                  <td className="border p-2">{appointment.time}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
